@@ -1,5 +1,4 @@
-from flask import Flask, render_template, request
-import requests
+from flask import Flask, render_template, request, redirect, url_for
 import datetime
 import calendar
 import smtplib
@@ -115,6 +114,9 @@ def create_new_post():
                                 img_url=form.img_url.data)
             db.session.add(new_post)
             db.session.commit()
+
+            # TODO: check how to pass status code.
+            return redirect(url_for("home"))
 
     return render_template("make-post.html", form=form)
 
