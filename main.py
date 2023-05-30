@@ -118,7 +118,7 @@ def create_new_post():
             # TODO: check how to pass status code.
             return redirect(url_for("home"))
 
-    return render_template("make-post.html", form=form)
+    return render_template("make-post.html", form=form, title="Create new post")
 
 
 @app.route("/posts/<int:post_id>")
@@ -129,9 +129,34 @@ def load_post(post_id):
             return render_template("post.html", post=post, date=BlogService.get_current_date())
 
 
-@app.route("/posts/<int:post_id>", methods=['PATCH'])
+@app.route("/edit-post/<int:post_id>", methods=['POST', 'GET'])
 def edit_post(post_id):
-    pass
+    post_to_update = BlogPost.query.get(post_id)
+    edit_form = PostForm(
+        title=post_to_update.title,
+        subtitle=post_to_update.subtitle,
+        author=post_to_update.author,
+        img_url=post_to_update.img_url,
+        body=post_to_update.body
+    )
+
+    if edit_form.validate_on_submit():
+        post_to_update.title = edit_form.title.data
+        post_to_update.subtitle = edit_form.subtitle.data
+        post_to_update.body = request.form.get('body')
+        post_to_update.author = edit_form.author.data
+        post_to_update.img_url = edit_form.img_url.data
+        db.session.commit()
+        return redirect(url_for("load_post", post_id=post_id))
+    return render_template("make-post.html", form=edit_form, title="Update post")
+
+
+@app.route('/delete-post/<int:post_id>')
+def delete_post(post_id):
+    post_to_delete = BlogPost.query.get(post_id)
+    db.session.delete(post_to_delete)
+    db.session.commit()
+    return redirect(url_for("home"))
 
 
 if __name__ == "__main__":

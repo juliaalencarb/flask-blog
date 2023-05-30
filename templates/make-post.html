@@ -2,39 +2,37 @@
 
 {% block content %}
 {% include "header.html" %}
-  <!-- Page Header -->
-  <header class="masthead" style="background-image: url('{{ url_for('static', filename='img/edit-bg.jpg')}}')">
-    <div class="overlay"></div>
-    <div class="container">
-      <div class="row">
-        <div class="col-lg-8 col-md-10 mx-auto">
-          <div class="page-heading">
-            <h1>New Post</h1>
-            <span class="subheading">Create a new post</span>
-          </div>
-          {% import  "bootstrap/wtf.html" as wtf %}
-          <form action="{{ url_for('create_new_post')}}" method="post">
-            {{ form.csrf_token }}
-            {{ wtf.quick_form(form) }}
-          </form>
 
-           {{ ckeditor.load() }}
-           {{ ckeditor.config(name='body') }}
-           </body>
-        </div>
-      </div>
-    </div>
-  </header>
-
+<!-- Page Header -->
+<header class="masthead" style="background-image: url('{{ url_for('static', filename='img/edit-bg.jpg')}}')">
+  <div class="overlay"></div>
   <div class="container">
     <div class="row">
       <div class="col-lg-8 col-md-10 mx-auto">
-        
-          <!-- This is where the form will go -->
-
+        <div class="page-heading">
+          <h1>{{ title }}</h1>
+          <span class="subheading">Write what should not be forgotten.</span>
+        </div>
       </div>
     </div>
   </div>
+</header>
+
+<div class="container">
+  <div class="row">
+    <div class="col-lg-8 col-md-10 mx-auto">
+
+      {% import  "bootstrap/wtf.html" as wtf %}
+
+      {{ form.csrf_token }}
+      {{ wtf.quick_form(form) }}
+
+      {{ ckeditor.load() }}
+      {{ ckeditor.config(name='body') }}
+
+    </div>
+  </div>
+</div>
 
 {% include "footer.html" %}
 {% endblock %}
