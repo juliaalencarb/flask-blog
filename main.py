@@ -10,6 +10,10 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField
 from wtforms.validators import DataRequired, URL
+from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.orm import relationship
+from flask_login import UserMixin, login_user, LoginManager, login_required, current_user, logout_user
+from flask_gravatar import Gravatar
 
 load_dotenv()
 
@@ -70,6 +74,21 @@ class BlogService:
 @app.route("/")
 def home():
     return render_template("index.html", all_posts=BlogService.get_posts(), date=BlogService.get_current_date())
+
+
+@app.route('/register')
+def register():
+    return render_template("register.html")
+
+
+@app.route('/login')
+def login():
+    return render_template("login.html")
+
+
+@app.route('/logout')
+def logout():
+    return redirect(url_for('get_all_posts'))
 
 
 @app.route("/about")
