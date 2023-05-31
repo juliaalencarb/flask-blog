@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for
+import wtforms.fields.html5
+from flask import Flask, render_template, request, redirect, url_for, flash
 import datetime
 import calendar
 import smtplib
@@ -8,8 +9,8 @@ from flask_ckeditor import CKEditor, CKEditorField
 from flask_bootstrap import Bootstrap
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField
-from wtforms.validators import DataRequired, URL
+from wtforms import StringField, SubmitField, PasswordField
+from wtforms.validators import DataRequired, URL, Email, Length
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import relationship
 from flask_login import UserMixin, login_user, LoginManager, login_required, current_user, logout_user
@@ -28,6 +29,9 @@ db = SQLAlchemy(app)
 ckeditor = CKEditor(app)
 Bootstrap(app)
 
+login_manager = LoginManager()
+login_manager.init_app(app)
+
 
 class BlogPost(db.Model):
     # id, title, subtitle, date, body, author, img_url
@@ -38,6 +42,14 @@ class BlogPost(db.Model):
     body = db.Column(db.String(500), nullable=False)
     author = db.Column(db.String(255), nullable=False)
     img_url = db.Column(db.String(2083), nullable=False)
+
+
+class User(UserMixin, db.Model):
+    # name, email, password
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(50), unique=True, nullable=False)
+    password = db.Column(db.String(255), nullable=False)
 
 
 # with app.app_context():
@@ -51,6 +63,19 @@ class PostForm(FlaskForm):
     author = StringField("Author name", validators=[DataRequired()])
     img_url = StringField("Image URL", validators=[DataRequired(), URL()])
     body = CKEditorField("Post text", validators=[DataRequired()])
+    submit = SubmitField("Submit")
+
+
+class RegisterForm(FlaskForm):
+    name = StringField("Name", validators=[DataRequired()])
+    email = StringField("Email", validators=[DataRequired(), Email()])
+    password = PasswordField("Password", validators=[DataRequired(), Length(min=7)])
+    submit = SubmitField("Submit")
+
+
+class LoginForm(FlaskForm):
+    email = StringField("Email", validators=[DataRequired(), Email()])
+    password = PasswordField("Password", validators=[DataRequired(), Length(min=7)])
     submit = SubmitField("Submit")
 
 
@@ -71,24 +96,58 @@ class BlogService:
         return posts
 
 
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+
 @app.route("/")
 def home():
     return render_template("index.html", all_posts=BlogService.get_posts(), date=BlogService.get_current_date())
 
 
-@app.route('/register')
+@app.route('/register', methods=['GET', 'POST'])
 def register():
-    return render_template("register.html")
+    form = RegisterForm()
+    if request.method == 'POST':
+        if form.validate_on_submit():
+            register_data = request.form
+
+            # Check if user exists.
+            check_user = db.session.query(User).filter_by(email=register_data['email']).first()
+            if check_user:
+                flash("Email already exists.")
+                return redirect(url_for("login"))
+            else:
+                # If email is unique, add to db.
+                hashed_pw = generate_password_hash(password=register_data['password'], method="pbkdf2:sha256", salt_length=8)
+                new_user = User(name=register_data['name'], email=register_data['email'], password=hashed_pw)
+                db.session.add(new_user)
+                db.session.commit()
+                return redirect(url_for("home"))
+    return render_template("register.html", form=form)
 
 
-@app.route('/login')
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    return render_template("login.html")
+    form = LoginForm()
+    if request.method == 'POST' and form.validate_on_submit():
+        # Check if the email is on db.
+        user = db.session.query(User).filter_by(email=request.form['email']).first()
+        if not user:
+            flash("Invalid email address.")
+        else:
+            if check_password_hash(user.password, request.form['password']):
+                login_user(user)
+                flash("User logged in successfully!")
+                return redirect(url_for("home"))
+    return render_template("login.html", form=form)
 
 
 @app.route('/logout')
 def logout():
-    return redirect(url_for('get_all_posts'))
+    logout_user()
+    return redirect(url_for('home'))
 
 
 @app.route("/about")
