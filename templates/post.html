@@ -37,4 +37,38 @@
 
     <hr>
 
+    <section class="container">
+        <div class="row">
+            <div class="col-lg-8 col-md-10 mx-auto">
+
+                {% import  "bootstrap/wtf.html" as wtf %}
+
+                {{ form.csrf_token }}
+                {{ wtf.quick_form(form, novalidate=True, button_map={"submit": "primary"}) }}
+
+                {{ ckeditor.load() }}
+                {{ ckeditor.config(name='comment') }}
+            </div>
+        </div>
+        <br>
+        <div class="row">
+            <div class="col-lg-8 col-md-10 mx-auto">
+                <ul class="commentList">
+                    {% for comment in comments %}
+                    <li>
+                        <div class="commenterImage">
+                            <img src="{{ comment.author.email | gravatar }}">
+                        </div>
+                        <div class="commentText">
+                            {{ comment.text | safe }}
+                            <span class="date sub-text">{{ comment.author.name }}</span>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <hr>
+            </div>
+        </div>
+    </section>
+
     {% include "footer.html" %}

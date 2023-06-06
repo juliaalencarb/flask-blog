@@ -30,6 +30,15 @@ db = SQLAlchemy(app)
 ckeditor = CKEditor(app)
 Bootstrap(app)
 
+gravatar = Gravatar(app,
+                    size=100,
+                    rating='g',
+                    default='retro',
+                    force_default=False,
+                    force_lower=False,
+                    use_ssl=False,
+                    base_url=None)
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 
@@ -40,7 +49,8 @@ class User(UserMixin, db.Model):
     name = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(50), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    posts = db.relationship('BlogPost', back_populates='author')
+    posts = relationship('BlogPost', back_populates='author')
+    comments = relationship('Comment', back_populates='author')
 
 
 class BlogPost(db.Model):
@@ -53,6 +63,17 @@ class BlogPost(db.Model):
     date = db.Column(db.String(100), nullable=True, default=datetime.datetime.utcnow)
     body = db.Column(db.String(500), nullable=False)
     img_url = db.Column(db.String(2083), nullable=False)
+    comments = relationship("Comment", back_populates='post')
+
+
+class Comment(db.Model):
+    __tablename__ = "comments"
+    id = db.Column(db.Integer, primary_key=True)
+    post = relationship("BlogPost", back_populates='comments')
+    post_id = db.Column(db.Integer, db.ForeignKey('blog_posts.id'))
+    author = relationship("User", back_populates='comments')
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    text = db.Column(db.String(500), nullable=False)
 
 
 # with app.app_context():
@@ -60,10 +81,8 @@ class BlogPost(db.Model):
 
 
 class PostForm(FlaskForm):
-    # title, subtitle, author, img_url, body, submit
     title = StringField("Post title", validators=[DataRequired()])
     subtitle = StringField("Post subtitle", validators=[DataRequired()])
-    author = StringField("Author name", validators=[DataRequired()])
     img_url = StringField("Image URL", validators=[DataRequired(), URL()])
     body = CKEditorField("Post text", validators=[DataRequired()])
     submit = SubmitField("Submit")
@@ -79,6 +98,11 @@ class RegisterForm(FlaskForm):
 class LoginForm(FlaskForm):
     email = StringField("Email", validators=[DataRequired(), Email()])
     password = PasswordField("Password", validators=[DataRequired(), Length(min=7)])
+    submit = SubmitField("Submit")
+
+
+class CommentForm(FlaskForm):
+    comment = CKEditorField("Comment", validators=[DataRequired()])
     submit = SubmitField("Submit")
 
 
@@ -111,7 +135,8 @@ def admin_only(f):
             if current_user.id != 1:
                 return abort(403)
             return f(*args, **kwargs)
-        except AttributeError:
+        except AttributeError as e:
+            print(e)
             return redirect(url_for("home"))
     return decorated_function
 
@@ -220,16 +245,32 @@ def create_new_post():
     return render_template("make-post.html", form=form, title="Create new post")
 
 
-@app.route("/posts/<int:post_id>")
+@app.route("/posts/<int:post_id>", methods=['GET', 'POST'])
 def load_post(post_id):
     user = current_user
     posts = BlogService.get_posts()
+    comment_form = CommentForm()
+    comments = BlogPost.query.get(post_id).comments
+    if request.method == 'POST':
+        if comment_form.validate_on_submit():
+            if not current_user.is_authenticated:
+                flash("You need to login to be able to comment.")
+                return redirect(url_for("login"))
+
+            data = request.form.get('comment')
+            new_comment = Comment(post_id=post_id,
+                                  author_id=user.id,
+                                  text=data)
+            db.session.add(new_comment)
+            db.session.commit()
+
+            return redirect(url_for("load_post", post_id=post_id))
     for post in posts:
         if post.id == post_id:
-            return render_template("post.html", post=post, date=BlogService.get_current_date())
+            return render_template("post.html", post=post, date=BlogService.get_current_date(), form=comment_form, comments=comments)
 
 
-@app.route("/edit-post/<int:post_id>", methods=['POST', 'GET'])
+@app.route("/edit-post/<int:post_id>", methods=['GET', 'POST'])
 @admin_only
 def edit_post(post_id):
     post_to_update = BlogPost.query.get(post_id)
@@ -245,7 +286,7 @@ def edit_post(post_id):
         post_to_update.title = edit_form.title.data
         post_to_update.subtitle = edit_form.subtitle.data
         post_to_update.body = request.form.get('body')
-        post_to_update.author = edit_form.author.data
+        post_to_update.author = current_user
         post_to_update.img_url = edit_form.img_url.data
         db.session.commit()
         return redirect(url_for("load_post", post_id=post_id))
