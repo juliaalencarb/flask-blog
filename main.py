@@ -1,5 +1,5 @@
 import wtforms.fields.html5
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, abort
 import datetime
 import calendar
 import smtplib
@@ -15,12 +15,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import relationship
 from flask_login import UserMixin, login_user, LoginManager, login_required, current_user, logout_user
 from flask_gravatar import Gravatar
+from functools import wraps
 
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posts.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///blog-db.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 app.secret_key = "secret"
@@ -33,23 +34,25 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 
 
-class BlogPost(db.Model):
-    # id, title, subtitle, date, body, author, img_url
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(255), unique=True, nullable=False)
-    subtitle = db.Column(db.String(255), nullable=False)
-    date = db.Column(db.String(100), nullable=True, default=datetime.datetime.utcnow)
-    body = db.Column(db.String(500), nullable=False)
-    author = db.Column(db.String(255), nullable=False)
-    img_url = db.Column(db.String(2083), nullable=False)
-
-
 class User(UserMixin, db.Model):
-    # name, email, password
+    __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(50), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
+    posts = db.relationship('BlogPost', back_populates='author')
+
+
+class BlogPost(db.Model):
+    __tablename__ = "blog_posts"
+    id = db.Column(db.Integer, primary_key=True)
+    author = relationship("User", back_populates='posts')
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    title = db.Column(db.String(255), unique=True, nullable=False)
+    subtitle = db.Column(db.String(255), nullable=False)
+    date = db.Column(db.String(100), nullable=True, default=datetime.datetime.utcnow)
+    body = db.Column(db.String(500), nullable=False)
+    img_url = db.Column(db.String(2083), nullable=False)
 
 
 # with app.app_context():
@@ -101,6 +104,18 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 
+def admin_only(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            if current_user.id != 1:
+                return abort(403)
+            return f(*args, **kwargs)
+        except AttributeError:
+            return redirect(url_for("home"))
+    return decorated_function
+
+
 @app.route("/")
 def home():
     return render_template("index.html", all_posts=BlogService.get_posts(), date=BlogService.get_current_date())
@@ -124,6 +139,7 @@ def register():
                 new_user = User(name=register_data['name'], email=register_data['email'], password=hashed_pw)
                 db.session.add(new_user)
                 db.session.commit()
+                login_user(new_user)
                 return redirect(url_for("home"))
     return render_template("register.html", form=form)
 
@@ -136,11 +152,15 @@ def login():
         user = db.session.query(User).filter_by(email=request.form['email']).first()
         if not user:
             flash("Invalid email address.")
+            return redirect(url_for("login"))
         else:
             if check_password_hash(user.password, request.form['password']):
                 login_user(user)
                 flash("User logged in successfully!")
                 return redirect(url_for("home"))
+            else:
+                flash("Invalid password.")
+                return redirect(url_for("login"))
     return render_template("login.html", form=form)
 
 
@@ -178,6 +198,7 @@ def contact():
 
 
 @app.route("/posts", methods=['POST', 'GET'])
+@admin_only
 def create_new_post():
     form = PostForm()
 
@@ -188,7 +209,7 @@ def create_new_post():
             new_post = BlogPost(title=form.title.data,
                                 subtitle=form.subtitle.data,
                                 body=data,
-                                author=form.author.data,
+                                author=current_user,
                                 img_url=form.img_url.data)
             db.session.add(new_post)
             db.session.commit()
@@ -201,6 +222,7 @@ def create_new_post():
 
 @app.route("/posts/<int:post_id>")
 def load_post(post_id):
+    user = current_user
     posts = BlogService.get_posts()
     for post in posts:
         if post.id == post_id:
@@ -208,6 +230,7 @@ def load_post(post_id):
 
 
 @app.route("/edit-post/<int:post_id>", methods=['POST', 'GET'])
+@admin_only
 def edit_post(post_id):
     post_to_update = BlogPost.query.get(post_id)
     edit_form = PostForm(
@@ -230,6 +253,7 @@ def edit_post(post_id):
 
 
 @app.route('/delete-post/<int:post_id>')
+@admin_only
 def delete_post(post_id):
     post_to_delete = BlogPost.query.get(post_id)
     db.session.delete(post_to_delete)
